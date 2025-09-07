@@ -12,27 +12,25 @@ const categoryTagsDiv = document.getElementById('categoryTags');
 const selectedCountSpan = document.getElementById('selectedCount');
 const loadMoreBtn = document.getElementById('loadMoreBtn');
 const viewButtons = document.querySelectorAll('.view-btn');
-
-// Tab navigation elements
 const tabButtons = document.querySelectorAll('.tab-button');
 const tabContents = document.querySelectorAll('.tab-content');
-
-// Updater tab elements
-const targetMcVersionSelect = document.getElementById('targetMcVersion');
-const targetModLoaderSelect = document.getElementById('targetModLoader');
-const folderInput = document.getElementById('folderInput');
-const fileInput = document.getElementById('fileInput');
-const analyzingStatus = document.getElementById('analyzingStatus');
-const modAnalysisResults = document.getElementById('modAnalysisResults');
-const detectedVersion = document.getElementById('detectedVersion');
-const detectedLoader = document.getElementById('detectedLoader');
-const modsAnalyzedCount = document.getElementById('modsAnalyzedCount');
-const modsFoundCount = document.getElementById('modsFoundCount');
-const updatesAvailableCount = document.getElementById('updatesAvailableCount');
-const updatesList = document.getElementById('updatesList');
+const modFileInput = document.getElementById('modFileInput');
+const modFolderInput = document.getElementById('modFolderInput');
+const uploadArea = document.getElementById('uploadArea');
+const analyzeBtn = document.getElementById('analyzeBtn');
 const updateAllBtn = document.getElementById('updateAllBtn');
-const selectUpdatesBtn = document.getElementById('selectUpdatesBtn');
-const updaterStatus = document.getElementById('updaterStatus');
+const targetVersionSelect = document.getElementById('targetVersion');
+const modUpdateList = document.getElementById('modUpdateList');
+const updateStatusDiv = document.getElementById('updateStatus');
+const detectedVersionSpan = document.getElementById('detectedVersion');
+const detectedModCountSpan = document.getElementById('detectedModCount');
+const identifiableModCountSpan = document.getElementById('identifiableModCount');
+const commonVersionSpan = document.getElementById('commonVersion');
+const analysisProgress = document.querySelector('.analysis-progress');
+const analysisResults = document.querySelector('.analysis-results');
+const progressFill = document.querySelector('.progress-fill');
+const selectAllModsCheckbox = document.getElementById('selectAllMods');
+const updateFilterButtons = document.querySelectorAll('.update-filter-btn');
 
 let allMods = [];
 let shownMods = [];
@@ -45,20 +43,30 @@ let totalPages = 1;
 let activeCategoryTags = new Set();
 let isLoading = false;
 
-// For updater feature
+// For mod updating feature
+let uploadType = "folder";
+let uploadedFiles = [];
 let analyzedMods = [];
-let detectedMcVersion = "";
-let detectedModLoader = "";
+let detectedVersion = "";
+let availableVersions = [];
+let currentFilter = "all";
+let selectedModsToUpdate = new Set();
 
-// Initialize tabs
+// Tab switching functionality
 function initTabs() {
-  tabButtons.forEach(button => {
-    button.addEventListener('click', () => {
-      tabButtons.forEach(btn => btn.classList.remove('active'));
-      tabContents.forEach(content => content.classList.remove('active'));
+  tabButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      tabButtons.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
       
-      button.classList.add('active');
-      document.getElementById(`${button.dataset.tab}-tab`).classList.add('active');
+      const tabId = btn.dataset.tab;
+      tabContents.forEach(content => {
+        if (content.id === `${tabId}-tab`) {
+          content.classList.remove('hidden');
+        } else {
+          content.classList.add('hidden');
+        }
+      });
     });
   });
 }
@@ -76,367 +84,385 @@ function initViewMode() {
   });
 }
 
-// Fetch Minecraft versions
-async function fetchVersions() {
-  statusDiv.textContent = "Loading Minecraft versions...";
-  try {
-    let resp = await fetch(`${MODRINTH_API}/tag/game_version`);
-    let versions = await resp.json();
-    let stable = versions.filter(v => !v.version.endsWith("-rc"))
-      .map(v => v.version);
-    stable = Array.from(new Set(stable));
-    stable.sort((a,b) => b.localeCompare(a, undefined, {numeric:true, sensitivity:'base'}));
-    
-    // Populate both version dropdowns
-    populateVersionDropdown(mcVersionSelect, stable);
-    populateVersionDropdown(targetMcVersionSelect, stable);
-    
-    statusDiv.textContent = "";
-  } catch (e) {
-    const defaultVersions = ["1.20.1", "1.19.4", "1.18.2", "1.16.5", "1.12.2"];
-    populateVersionDropdown(mcVersionSelect, defaultVersions);
-    populateVersionDropdown(targetMcVersionSelect, defaultVersions);
-    statusDiv.textContent = "Failed to load versions.";
-  }
-}
-
-// Helper function to populate version dropdowns
-function populateVersionDropdown(selectElement, versions) {
-  selectElement.innerHTML = "";
-  versions.forEach(v => {
-    let opt = document.createElement("option");
-    opt.value = v;
-    opt.textContent = v;
-    selectElement.appendChild(opt);
-  });
-  selectElement.value = versions.find(v => v === "1.20.1") || versions[0];
-}
-
-// Fetch categories
-async function fetchCategories() {
-  try {
-    let resp = await fetch(`${MODRINTH_API}/tag/category`);
-    let cats = await resp.json();
-    categories = cats.filter(cat =>
-      ['technology','magic','storage','food','economy','adventure','equipment','library','misc','optimization','social','utility','worldgen'].includes(cat.name) ||
-      cat.project_type === 'mod'
-    );
-    
-    // Populate category dropdown
-    categorySelect.innerHTML = "<option value=''>All</option>";
-    categories.forEach(cat => {
-      let opt = document.createElement("option");
-      opt.value = cat.name;
-      opt.textContent = cat.name.charAt(0).toUpperCase() + cat.name.slice(1);
-      categorySelect.appendChild(opt);
+// Initialize file upload related functionality
+function initFileUpload() {
+  const uploadTypeRadios = document.querySelectorAll('input[name="uploadType"]');
+  uploadTypeRadios.forEach(radio => {
+    radio.addEventListener('change', (e) => {
+      uploadType = e.target.value;
     });
-    
-    // Create category tags
-    renderCategoryTags();
-  } catch (e) {
-    categorySelect.innerHTML = "<option value=''>All</option>";
-  }
-}
-
-// Render category tags
-function renderCategoryTags() {
-  categoryTagsDiv.innerHTML = "";
-  if (!categories.length) return;
-  
-  // Add "All" tag
-  const allTag = document.createElement("span");
-  allTag.className = "category-tag";
-  if (activeCategoryTags.size === 0) allTag.classList.add("active");
-  allTag.textContent = "All";
-  allTag.addEventListener("click", () => {
-    activeCategoryTags.clear();
-    categorySelect.value = "";
-    renderCategoryTags();
-    reloadMods();
   });
-  categoryTagsDiv.appendChild(allTag);
   
-  // Add category tags
-  categories.forEach(cat => {
-    if (!['technology','magic','storage','food','adventure','equipment','library','optimization','utility','worldgen'].includes(cat.name)) {
-      return;
+  uploadArea.addEventListener('click', () => {
+    if (uploadType === "folder") {
+      modFolderInput.click();
+    } else {
+      modFileInput.click();
     }
+  });
+  
+  uploadArea.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    uploadArea.classList.add('active');
+  });
+  
+  uploadArea.addEventListener('dragleave', () => {
+    uploadArea.classList.remove('active');
+  });
+  
+  uploadArea.addEventListener('drop', (e) => {
+    e.preventDefault();
+    uploadArea.classList.remove('active');
     
-    const tagSpan = document.createElement("span");
-    tagSpan.className = "category-tag";
-    if (activeCategoryTags.has(cat.name)) tagSpan.classList.add("active");
-    tagSpan.textContent = cat.name.charAt(0).toUpperCase() + cat.name.slice(1);
-    tagSpan.addEventListener("click", () => {
-      if (activeCategoryTags.has(cat.name)) {
-        activeCategoryTags.delete(cat.name);
+    const files = e.dataTransfer.files;
+    handleFiles(files);
+  });
+  
+  modFileInput.addEventListener('change', (e) => {
+    handleFiles(e.target.files);
+  });
+  
+  modFolderInput.addEventListener('change', (e) => {
+    handleFiles(e.target.files);
+  });
+  
+  // Initialize filter buttons for update tab
+  updateFilterButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      updateFilterButtons.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentFilter = btn.dataset.filter;
+      renderModsToUpdate();
+    });
+  });
+  
+  // Handle select all checkbox
+  selectAllModsCheckbox.addEventListener('change', () => {
+    const checkboxes = document.querySelectorAll('.update-mod-checkbox');
+    checkboxes.forEach(checkbox => {
+      checkbox.checked = selectAllModsCheckbox.checked;
+      if (selectAllModsCheckbox.checked) {
+        selectedModsToUpdate.add(checkbox.value);
       } else {
-        activeCategoryTags.add(cat.name);
+        selectedModsToUpdate.delete(checkbox.value);
       }
-      categorySelect.value = activeCategoryTags.size === 1 ? [...activeCategoryTags][0] : "";
-      renderCategoryTags();
-      reloadMods();
     });
-    categoryTagsDiv.appendChild(tagSpan);
+    updateAllBtn.disabled = selectedModsToUpdate.size === 0;
   });
 }
 
-// Fetch mods with pagination
-async function fetchMods(version, loader, query = "", category = "", sortOrder = "relevance", page = 1) {
-  statusDiv.textContent = "Loading mods...";
-  loadMoreBtn.disabled = true;
-  loadMoreBtn.classList.add('loading');
-  isLoading = true;
+// Handle uploaded files
+function handleFiles(files) {
+  if (!files || files.length === 0) return;
   
-  try {
-    let offset = (page - 1) * pageSize;
-    let limit = pageSize;
-    
-    let facetsArr = [
-      ["project_type:mod"],
-      [`versions:${version}`],
-      [`categories:${loader}`],
-    ];
-    
-    // Handle multiple categories
-    if (activeCategoryTags.size > 0) {
-      activeCategoryTags.forEach(cat => {
-        facetsArr.push([`categories:${cat}`]);
-      });
-    } else if (category) {
-      facetsArr.push([`categories:${category}`]);
-    }
-    
-    let facets = encodeURIComponent(JSON.stringify(facetsArr));
-    let url = `${MODRINTH_API}/search?limit=${limit}&offset=${offset}&facets=${facets}&index=${sortOrder}`;
-    if (query) url += `&query=${encodeURIComponent(query)}`;
-    
-    let resp = await fetch(url);
-    let json = await resp.json();
-    
-    // Calculate total pages
-    totalPages = Math.ceil(json.total_hits / pageSize);
-    
-    // Update load more button visibility
-    loadMoreBtn.style.display = page >= totalPages ? 'none' : 'block';
-    
-    return json.hits;
-  } catch (e) {
-    statusDiv.textContent = "Failed to fetch mods: " + e;
-    return [];
-  } finally {
-    loadMoreBtn.disabled = false;
-    loadMoreBtn.classList.remove('loading');
-    isLoading = false;
-  }
-}
-
-// Render mods with the current view
-function renderVisibleMods() {
-  modListDiv.innerHTML = "";
-  modListDiv.className = `mod-list ${currentView}-view`;
+  // Filter only .jar files
+  const jarFiles = Array.from(files).filter(file => file.name.toLowerCase().endsWith('.jar'));
   
-  if (!shownMods.length) {
-    modListDiv.innerHTML = "<p class='empty-state'>No mods found for this version/loader/category.</p>";
-    downloadBtn.disabled = true;
+  if (jarFiles.length === 0) {
+    updateStatusDiv.textContent = "No jar files found. Please select Minecraft mod files.";
+    updateStatusDiv.style.color = "var(--danger)";
     return;
   }
   
-  shownMods.forEach((mod, idx) => {
-    let div = document.createElement("div");
-    div.className = "mod-item";
-    div.style.animationDelay = (idx * 0.03) + "s";
-    
-    // Checkbox
-    let checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.className = "mod-checkbox";
-    checkbox.checked = selectedMods.has(mod.slug);
-    checkbox.value = mod.slug;
-    checkbox.addEventListener("change", () => {
-      if (checkbox.checked) selectedMods.add(mod.slug);
-      else selectedMods.delete(mod.slug);
-      downloadBtn.disabled = selectedMods.size === 0;
-      selectedCountSpan.textContent = selectedMods.size;
-    });
-    div.appendChild(checkbox);
+  uploadedFiles = jarFiles;
+  updateStatusDiv.textContent = `${jarFiles.length} mod files selected.`;
+  updateStatusDiv.style.color = "var(--text-primary)";
+  
+  // Update UI
+  uploadArea.innerHTML = `<i class="fas fa-check-circle" style="color: var(--success);"></i>
+                          <span>${jarFiles.length} mod files selected</span>
+                          <span class="file-list">${jarFiles.length > 3 ? jarFiles.slice(0, 3).map(f => f.name).join(", ") + "..." : jarFiles.map(f => f.name).join(", ")}</span>`;
+  
+  analyzeBtn.disabled = false;
+}
 
-    // Don't show thumb in small views
-    if (!currentView.includes('small')) {
-      if (currentView === 'grid') {
-        let thumbContainer = document.createElement("div");
-        thumbContainer.className = "mod-thumb-container";
-        
-        let thumb = document.createElement("img");
-        thumb.className = "mod-thumb";
-        thumb.src = mod.icon_url || "https://i.imgur.com/OnjVZqV.png";
-        thumb.alt = mod.title;
-        thumb.loading = "lazy";
-        thumb.onerror = () => { thumb.src = "https://i.imgur.com/OnjVZqV.png"; };
-        
-        thumbContainer.appendChild(thumb);
-        div.appendChild(thumbContainer);
-      } else {
-        let thumb = document.createElement("img");
-        thumb.className = "mod-thumb";
-        thumb.src = mod.icon_url || "https://i.imgur.com/OnjVZqV.png";
-        thumb.alt = mod.title;
-        thumb.loading = "lazy";
-        thumb.onerror = () => { thumb.src = "https://i.imgur.com/OnjVZqV.png"; };
-        div.appendChild(thumb);
+// Analyze the uploaded mod files
+async function analyzeMods() {
+  if (!uploadedFiles.length) return;
+  
+  analysisProgress.classList.remove('hidden');
+  analysisResults.classList.add('hidden');
+  progressFill.style.width = "0%";
+  analyzeBtn.disabled = true;
+  
+  updateStatusDiv.textContent = "Analyzing mod files...";
+  updateStatusDiv.style.color = "var(--text-primary)";
+  
+  analyzedMods = [];
+  let mcVersionCounts = {};
+  let completedCount = 0;
+  
+  // Process each file
+  for (let i = 0; i < uploadedFiles.length; i++) {
+    const file = uploadedFiles[i];
+    
+    try {
+      // Read JAR file and extract metadata
+      const metadata = await extractModMetadata(file);
+      analyzedMods.push(metadata);
+      
+      // Count Minecraft versions
+      if (metadata.mcVersion) {
+        mcVersionCounts[metadata.mcVersion] = (mcVersionCounts[metadata.mcVersion] || 0) + 1;
       }
+      
+      // Update progress
+      completedCount++;
+      const progress = (completedCount / uploadedFiles.length) * 100;
+      progressFill.style.width = `${progress}%`;
+      
+    } catch (error) {
+      console.error(`Error analyzing ${file.name}:`, error);
+      analyzedMods.push({
+        fileName: file.name,
+        displayName: file.name.replace('.jar', ''),
+        error: true
+      });
+      completedCount++;
+      const progress = (completedCount / uploadedFiles.length) * 100;
+      progressFill.style.width = `${progress}%`;
     }
-
-    // Info
-    let infoDiv = document.createElement("div");
-    infoDiv.className = "mod-info";
-
-    let title = document.createElement("div");
-    title.className = "mod-title";
-    title.textContent = mod.title;
-    infoDiv.appendChild(title);
-
-    let desc = document.createElement("div");
-    desc.className = "mod-desc";
-    desc.textContent = mod.description || "";
-    infoDiv.appendChild(desc);
-
-    let meta = document.createElement("div");
-    meta.className = "mod-meta";
+  }
+  
+  // Find most common Minecraft version
+  let mostCommonVersion = "";
+  let highestCount = 0;
+  for (const [version, count] of Object.entries(mcVersionCounts)) {
+    if (count > highestCount) {
+      highestCount = count;
+      mostCommonVersion = version;
+    }
+  }
+  
+  detectedVersion = mostCommonVersion;
+  
+  // Update UI with results
+  detectedVersionSpan.textContent = detectedVersion || "Unknown";
+  detectedModCountSpan.textContent = uploadedFiles.length;
+  
+  const identifiableCount = analyzedMods.filter(mod => mod.modId || mod.mcVersion).length;
+  identifiableModCountSpan.textContent = identifiableCount;
+  
+  commonVersionSpan.textContent = detectedVersion || "Unknown";
+  
+  // Show results and hide progress
+  analysisProgress.classList.add('hidden');
+  analysisResults.classList.remove('hidden');
+  
+  updateStatusDiv.textContent = `Analysis complete. Detected Minecraft version: ${detectedVersion || "Unknown"}`;
+  
+  // Load available versions for upgrading
+  if (detectedVersion) {
+    await loadAvailableVersions(detectedVersion);
     
-    // Slug
-    let slug = document.createElement("span");
-    slug.className = "mod-slug";
-    slug.textContent = mod.slug;
-    meta.appendChild(slug);
+    // Enable target version selection
+    targetVersionSelect.disabled = false;
     
-    // Downloads
-    let downloads = document.createElement("span");
-    downloads.className = "mod-downloads";
-    downloads.innerHTML = mod.downloads ? `<i class="fas fa-download"></i> ${formatNumber(mod.downloads)}` : '';
-    meta.appendChild(downloads);
+    // Fetch additional data about the mods from Modrinth
+    await fetchModrinthDataForAnalyzedMods();
     
-    // Category
-    if (mod.categories && mod.categories.length) {
-      let catName = mod.categories.find(c =>
-        categories.find(cat => cat.name === c)
-      );
-      if (catName) {
-        let catSpan = document.createElement("span");
-        catSpan.className = "mod-category";
-        catSpan.textContent = catName.charAt(0).toUpperCase() + catName.slice(1);
-        meta.appendChild(catSpan);
+    // Render the mod update list
+    renderModsToUpdate();
+  } else {
+    updateStatusDiv.textContent = "Could not detect Minecraft version. Please select mods for a specific Minecraft version.";
+    updateStatusDiv.style.color = "var(--warning)";
+  }
+  
+  analyzeBtn.disabled = false;
+}
+
+// Extract metadata from a mod file
+function extractModMetadata(file) {
+  return new Promise((resolve, reject) => {
+    const fileReader = new FileReader();
+    
+    fileReader.onload = async function(e) {
+      try {
+        // Basic metadata from filename
+        const fileName = file.name;
+        let displayName = fileName.replace('.jar', '');
+        let modId = null;
+        let mcVersion = null;
+        
+        // Look for common patterns in filenames
+        // Examples: sodium-mc1.19.2-0.4.1.jar, jei-1.18.2-9.7.0.196.jar
+        const mcVersionRegex = /(?:mc|minecraft|forge|fabric)?-?(?<version>1\.\d+(?:\.\d+)?)/i;
+        const modIdRegex = /^(?<modid>[a-z0-9_-]+)(?:-|_|\s)/i;
+        
+        const mcMatch = fileName.match(mcVersionRegex);
+        const modMatch = fileName.match(modIdRegex);
+        
+        if (mcMatch && mcMatch.groups) {
+          mcVersion = mcMatch.groups.version;
+        }
+        
+        if (modMatch && modMatch.groups) {
+          modId = modMatch.groups.modid.toLowerCase();
+          displayName = modId.replace(/-/g, ' ').replace(/_/g, ' ')
+            .split(' ')
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(' ');
+        }
+        
+        resolve({
+          fileName,
+          displayName,
+          modId,
+          mcVersion,
+          file
+        });
+      } catch (error) {
+        resolve({
+          fileName: file.name,
+          displayName: file.name.replace('.jar', ''),
+          error: true
+        });
       }
-    }
+    };
     
-    infoDiv.appendChild(meta);
-    div.appendChild(infoDiv);
-    modListDiv.appendChild(div);
+    fileReader.onerror = function() {
+      reject(new Error("Error reading file"));
+    };
+    
+    // Start reading just a portion of the file to check for metadata
+    // We're just reading filename metadata for now, but could analyze JAR contents if needed
+    fileReader.readAsArrayBuffer(file.slice(0, 4096));
   });
 }
 
-// Format numbers in a readable way (e.g. 1.2M)
-function formatNumber(num) {
-  if (num >= 1000000) {
-    return (num / 1000000).toFixed(1) + 'M';
-  } else if (num >= 1000) {
-    return (num / 1000).toFixed(1) + 'K';
-  }
-  return num.toLocaleString();
-}
-
-// Filter mods based on search query
-function filterMods() {
-  let q = searchBox.value.trim().toLowerCase();
-  if (!q) {
-    shownMods = allMods;
-  } else {
-    shownMods = allMods.filter(mod =>
-      mod.title.toLowerCase().includes(q) ||
-      mod.slug.toLowerCase().includes(q) ||
-      (mod.description || "").toLowerCase().includes(q)
-    );
-  }
-  renderVisibleMods();
-}
-
-// Load next page of mods
-async function loadMoreMods() {
-  if (isLoading || currentPage >= totalPages) return;
-  
-  currentPage++;
-  let version = mcVersionSelect.value;
-  let loader = modLoaderSelect.value;
-  let category = categorySelect.value;
-  let sortOrder = sortOrderSelect.value;
-  let search = searchBox.value.trim();
-  
-  const newMods = await fetchMods(version, loader, search, category, sortOrder, currentPage);
-  allMods = [...allMods, ...newMods];
-  shownMods = allMods;
-  
-  if (search) {
-    filterMods();
-  } else {
-    renderVisibleMods();
-  }
-  
-  statusDiv.textContent = `Loaded ${allMods.length} mods.`;
-}
-
-// Reload all mods (clear and fetch new ones)
-async function reloadMods() {
-  selectedMods.clear();
-  downloadBtn.disabled = true;
-  selectedCountSpan.textContent = "0";
-  currentPage = 1;
-  
-  let version = mcVersionSelect.value;
-  let loader = modLoaderSelect.value;
-  let category = categorySelect.value;
-  let sortOrder = sortOrderSelect.value;
-  let search = searchBox.value.trim();
-  
-  allMods = await fetchMods(version, loader, search, category, sortOrder, 1);
-  shownMods = allMods;
-  
-  renderVisibleMods();
-  statusDiv.textContent = `Loaded ${allMods.length} mods.`;
-}
-
-// Event Listeners
-filterForm.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  await reloadMods();
-});
-
-searchBox.addEventListener('input', filterMods);
-loadMoreBtn.addEventListener('click', loadMoreMods);
-
-// Event listener for downloading selected mods
-downloadBtn.addEventListener('click', async () => {
-  if (!selectedMods.size) return;
-  
-  let modsToDownload = shownMods.filter(m => selectedMods.has(m.slug));
-  let version = mcVersionSelect.value;
-  let loader = modLoaderSelect.value;
-  
-  statusDiv.textContent = "Fetching mod files...";
-  
-  for (let i = 0; i < modsToDownload.length; i++) {
-    let mod = modsToDownload[i];
-    statusDiv.textContent = `Downloading ${mod.title} (${i+1}/${modsToDownload.length})...`;
+// Load available Minecraft versions newer than the detected version
+async function loadAvailableVersions(currentVersion) {
+  try {
+    let resp = await fetch(`${MODRINTH_API}/tag/game_version`);
+    let versions = await resp.json();
     
-    try {
-      let vurl = `${MODRINTH_API}/project/${mod.slug}/version?game_versions=["${version}"]&loaders=["${loader}"]`;
-      let vresp = await fetch(vurl);
-      let versions = await vresp.json();
-      
-      if (!versions.length) {
-        statusDiv.textContent += `\nNo compatible version for ${mod.title}.`;
-        continue;
+    // Filter stable versions newer than current
+    let newerVersions = versions.filter(v => {
+      // Filter out snapshots, pre-releases, etc.
+      if (v.version.includes('pre') || v.version.includes('rc') || v.version.includes('w') || v.version.includes('a')) {
+        return false;
       }
       
-      let file = versions[0].files.find(f => f.filename.endsWith(".jar"));
-      if (!file) {
-        statusDiv.textContent += `\nNo jar file for ${mod.title}.`;
-        continue
+      // Compare versions (simple string comparison for now)
+      return compareVersions(v.version, currentVersion) > 0;
+    });
+    
+    // Sort versions newest first
+    newerVersions.sort((a, b) => compareVersions(b.version, a.version));
+    
+    // Add to available versions list
+    availableVersions = newerVersions.map(v => v.version);
+    
+    // Update target version dropdown
+    targetVersionSelect.innerHTML = `<option value="">Select target version...</option>`;
+    availableVersions.forEach(version => {
+      const option = document.createElement('option');
+      option.value = version;
+      option.textContent = version;
+      targetVersionSelect.appendChild(option);
+    });
+    
+    // If there are no newer versions available
+    if (availableVersions.length === 0) {
+      targetVersionSelect.innerHTML = `<option value="">No newer versions available</option>`;
+      targetVersionSelect.disabled = true;
+    }
+    
+    // Add event listener for target version selection
+    targetVersionSelect.addEventListener('change', async () => {
+      if (targetVersionSelect.value) {
+        updateStatusDiv.textContent = `Checking mod availability for Minecraft ${targetVersionSelect.value}...`;
+        await checkModsForTargetVersion(targetVersionSelect.value);
+      }
+    });
+    
+  } catch (e) {
+    console.error("Failed to load available versions:", e);
+    targetVersionSelect.innerHTML = `<option value="">Failed to load versions</option>`;
+    targetVersionSelect.disabled = true;
+  }
+}
+
+// Compare two version strings
+function compareVersions(v1, v2) {
+  const parts1 = v1.split('.').map(Number);
+  const parts2 = v2.split('.').map(Number);
+  
+  for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
+    const part1 = parts1[i] || 0;
+    const part2 = parts2[i] || 0;
+    
+    if (part1 > part2) return 1;
+    if (part1 < part2) return -1;
+  }
+  
+  return 0;
+}
+
+// Fetch mod data from Modrinth for analyzed mods
+async function fetchModrinthDataForAnalyzedMods() {
+  updateStatusDiv.textContent = "Looking up mods on Modrinth...";
+  
+  for (const mod of analyzedMods) {
+    if (!mod.modId || mod.error) continue;
+    
+    try {
+      // Try to find by slug (modId)
+      let response = await fetch(`${MODRINTH_API}/project/${mod.modId}`);
+      
+      if (!response.ok) {
+        // If not found, try search
+        const searchUrl = `${MODRINTH_API}/search?query=${encodeURIComponent(mod.displayName)}&limit=1&index=relevance`;
+        response = await fetch(searchUrl);
+        
+        if (response.ok) {
+          const searchResult = await response.json();
+          if (searchResult.hits && searchResult.hits.length > 0) {
+            mod.modrinthData = searchResult.hits[0];
+          }
+        }
+      } else {
+        mod.modrinthData = await response.json();
+      }
+    } catch (error) {
+      console.error(`Error fetching data for ${mod.displayName}:`, error);
+    }
+  }
+}
+
+// Check if mods are available for target version
+async function checkModsForTargetVersion(targetVersion) {
+  const targetLoader = modLoaderSelect.value;
+  
+  for (const mod of analyzedMods) {
+    if (!mod.modrinthData) continue;
+    
+    try {
+      const versionsUrl = `${MODRINTH_API}/project/${mod.modrinthData.slug || mod.modrinthData.project_id}/version?game_versions=["${targetVersion}"]&loaders=["${targetLoader}"]`;
+      const response = await fetch(versionsUrl);
+      
+      if (response.ok) {
+        const versions = await response.json();
+        mod.targetVersions = versions;
+        
+        if (versions.length > 0) {
+          mod.hasTargetVersion = true;
+          mod.targetVersion = versions[0];
+        } else {
+          mod.hasTargetVersion = false;
+        }
+      } else {
+        mod.hasTargetVersion = false;
+      }
+    } catch (error) {
+      console.error(`Error checking versions for ${mod.displayName}:`, error);
+      mod.hasTargetVersion = false;
+    }
+  }
+  
+  renderModsToUpdate();
+  updateAllBtn.disabled = false;
+}
+
+// Render the list of mods to update
+function renderMo
