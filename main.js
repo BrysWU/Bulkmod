@@ -12,20 +12,23 @@ const categoryTagsDiv = document.getElementById('categoryTags');
 const selectedCountSpan = document.getElementById('selectedCount');
 const loadMoreBtn = document.getElementById('loadMoreBtn');
 const viewButtons = document.querySelectorAll('.view-btn');
-const tabButtons = document.querySelectorAll('.tab-button');
+const tabButtons = document.querySelectorAll('.tab-btn');
 const tabContents = document.querySelectorAll('.tab-content');
 
 // Update tab elements
-const modFolderInput = document.getElementById('modFolderInput');
-const modFilesInput = document.getElementById('modFilesInput');
-const detectedVersionSpan = document.getElementById('detectedVersion');
+const folderInput = document.getElementById('folderInput');
+const fileInput = document.getElementById('fileInput');
+const fileListDiv = document.getElementById('fileList');
 const targetVersionSelect = document.getElementById('targetVersion');
-const analysisStatusDiv = document.getElementById('analysisStatus');
-const analysisProgressBar = document.getElementById('analysisProgress');
-const modCountSpan = document.getElementById('modCount');
-const modUpdateListDiv = document.getElementById('modUpdateList');
-const updateAllBtn = document.getElementById('updateAllBtn');
-const downloadUpdatesBtn = document.getElementById('downloadUpdatesBtn');
+const targetLoaderSelect = document.getElementById('targetLoader');
+const analyzeBtn = document.getElementById('analyzeBtn');
+const updateBtn = document.getElementById('updateBtn');
+const updateResultsDiv = document.getElementById('updateResults');
+const detectVersionDiv = document.getElementById('detectVersion');
+const detectLoaderDiv = document.getElementById('detectLoader');
+const modsCountDiv = document.getElementById('modsCount');
+const updateListDiv = document.getElementById('updateList');
+const updateStatusDiv = document.getElementById('updateStatus');
 
 let allMods = [];
 let shownMods = [];
@@ -38,11 +41,24 @@ let totalPages = 1;
 let activeCategoryTags = new Set();
 let isLoading = false;
 
-// Variables for the update feature
-let uploadedMods = [];
+// For update tab
+let selectedFiles = [];
 let detectedVersion = null;
-let availableUpdates = {};
-let modsToUpdate = new Set();
+let detectedLoader = null;
+let modInfoMap = new Map();
+
+// Function to initialize tab switching
+function initTabs() {
+  tabButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      tabButtons.forEach(b => b.classList.remove('active'));
+      tabContents.forEach(c => c.classList.remove('active'));
+      
+      btn.classList.add('active');
+      document.getElementById(btn.dataset.tab).classList.add('active');
+    });
+  });
+}
 
 // Function to initialize view mode
 function initViewMode() {
@@ -57,19 +73,6 @@ function initViewMode() {
   });
 }
 
-// Tab switching functionality
-function initTabs() {
-  tabButtons.forEach(btn => {
-    btn.addEventListener('click', () => {
-      tabButtons.forEach(b => b.classList.remove('active'));
-      tabContents.forEach(c => c.classList.remove('active'));
-      
-      btn.classList.add('active');
-      document.getElementById(btn.dataset.tab + 'Tab').classList.add('active');
-    });
-  });
-}
-
 // Fetch Minecraft versions
 async function fetchVersions() {
   statusDiv.textContent = "Loading Minecraft versions...";
@@ -80,29 +83,34 @@ async function fetchVersions() {
       .map(v => v.version);
     stable = Array.from(new Set(stable));
     stable.sort((a,b) => b.localeCompare(a, undefined, {numeric:true, sensitivity:'base'}));
-    mcVersionSelect.innerHTML = "";
-    stable.forEach(v => {
-      let opt = document.createElement("option");
-      opt.value = v;
-      opt.textContent = v;
-      mcVersionSelect.appendChild(opt);
-    });
-    mcVersionSelect.value = stable.find(v => v === "1.20.1") || stable[0];
     
-    // Also populate the target version dropdown for the update tab
-    targetVersionSelect.innerHTML = "<option value=''>Select Version</option>";
-    stable.forEach(v => {
-      let opt = document.createElement("option");
-      opt.value = v;
-      opt.textContent = v;
-      targetVersionSelect.appendChild(opt);
-    });
+    populateVersionDropdown(mcVersionSelect, stable);
+    populateVersionDropdown(targetVersionSelect, stable);
     
     statusDiv.textContent = "";
   } catch (e) {
     mcVersionSelect.innerHTML = "<option value='1.20.1'>1.20.1</option><option value='1.18.2'>1.18.2</option>";
-    targetVersionSelect.innerHTML = "<option value=''>Select Version</option><option value='1.20.1'>1.20.1</option><option value='1.18.2'>1.18.2</option>";
+    targetVersionSelect.innerHTML = "<option value=''>Select a version</option><option value='1.20.1'>1.20.1</option><option value='1.18.2'>1.18.2</option>";
     statusDiv.textContent = "Failed to load versions.";
+  }
+}
+
+// Helper function to populate version dropdowns
+function populateVersionDropdown(select, versions) {
+  select.innerHTML = "";
+  if (select === targetVersionSelect) {
+    select.innerHTML = "<option value=''>Select a version</option>";
+  }
+  
+  versions.forEach(v => {
+    let opt = document.createElement("option");
+    opt.value = v;
+    opt.textContent = v;
+    select.appendChild(opt);
+  });
+  
+  if (select === mcVersionSelect) {
+    select.value = versions.find(v => v === "1.20.1") || versions[0];
   }
 }
 
@@ -461,108 +469,69 @@ downloadBtn.addEventListener('click', async () => {
   statusDiv.textContent = "All done! Check your downloads folder.";
 });
 
-// ==================== MOD UPDATE FEATURE ====================
+// ----- Modpack Update Feature -----
 
-// Handle folder input change
-modFolderInput.addEventListener('change', async (e) => {
-  const files = e.target.files;
-  if (!files || files.length === 0) return;
-  
-  await processModFiles(files);
-});
+// Handle file selection
+folderInput.addEventListener('change', handleFileSelection);
+fileInput.addEventListener('change', handleFileSelection);
 
-// Handle individual files input change
-modFilesInput.addEventListener('change', async (e) => {
-  const files = e.target.files;
-  if (!files || files.length === 0) return;
+function handleFileSelection(e) {
+  selectedFiles = Array.from(e.target.files).filter(file => 
+    file.name.endsWith('.jar')
+  );
   
-  await processModFiles(files);
-});
+  updateFileList();
+  
+  if (selectedFiles.length > 0) {
+    analyzeBtn.disabled = false;
+    targetVersionSelect.disabled = false;
+    targetLoaderSelect.disabled = false;
+  } else {
+    analyzeBtn.disabled = true;
+    targetVersionSelect.disabled = true;
+    targetLoaderSelect.disabled = true;
+  }
+}
 
-// Process the selected mod files
-async function processModFiles(files) {
-  // Reset state
-  uploadedMods = [];
-  detectedVersion = null;
-  availableUpdates = {};
-  modsToUpdate.clear();
-  
-  analysisStatusDiv.textContent = `Analyzing ${files.length} files...`;
-  analysisProgressBar.value = 0;
-  modUpdateListDiv.innerHTML = '';
-  detectedVersionSpan.textContent = '-';
-  targetVersionSelect.disabled = true;
-  updateAllBtn.disabled = true;
-  downloadUpdatesBtn.disabled = true;
-  
-  // Filter only .jar files
-  const jarFiles = Array.from(files).filter(file => file.name.toLowerCase().endsWith('.jar'));
-  
-  if (jarFiles.length === 0) {
-    analysisStatusDiv.textContent = "No mod files (.jar) found. Please select valid mod files.";
+// Update the file list display
+function updateFileList() {
+  if (!selectedFiles.length) {
+    fileListDiv.innerHTML = '<p class="no-files">No files selected</p>';
     return;
   }
   
-  let versionCounts = {};
-  let processedCount = 0;
+  fileListDiv.innerHTML = '';
+  let totalSize = 0;
   
-  for (const file of jarFiles) {
-    try {
-      const modInfo = await extractModInfo(file);
-      if (modInfo) {
-        uploadedMods.push(modInfo);
-        
-        // Count versions to determine the most common one
-        if (modInfo.mcVersion) {
-          versionCounts[modInfo.mcVersion] = (versionCounts[modInfo.mcVersion] || 0) + 1;
-        }
-      }
-      
-      // Update progress
-      processedCount++;
-      const progress = (processedCount / jarFiles.length) * 100;
-      analysisProgressBar.value = progress;
-    } catch (e) {
-      console.error(`Error processing ${file.name}:`, e);
-    }
-  }
-  
-  // Determine the most common version
-  let mostCommonVersion = null;
-  let maxCount = 0;
-  
-  Object.entries(versionCounts).forEach(([version, count]) => {
-    if (count > maxCount) {
-      maxCount = count;
-      mostCommonVersion = version;
-    }
+  selectedFiles.forEach(file => {
+    totalSize += file.size;
+    
+    const fileItem = document.createElement('div');
+    fileItem.className = 'file-item';
+    
+    const fileName = document.createElement('span');
+    fileName.className = 'file-name';
+    fileName.textContent = file.name;
+    
+    const fileSize = document.createElement('span');
+    fileSize.className = 'file-size';
+    fileSize.textContent = formatFileSize(file.size);
+    
+    fileItem.appendChild(fileName);
+    fileItem.appendChild(fileSize);
+    fileListDiv.appendChild(fileItem);
   });
   
-  detectedVersion = mostCommonVersion;
+  // Add summary
+  const summary = document.createElement('div');
+  summary.className = 'file-item';
   
-  if (detectedVersion) {
-    detectedVersionSpan.textContent = detectedVersion;
-    targetVersionSelect.disabled = false;
-    
-    // Enable versions newer than detected version
-    const options = Array.from(targetVersionSelect.options);
-    options.forEach(option => {
-      if (option.value && compareVersions(option.value, detectedVersion) > 0) {
-        option.disabled = false;
-      } else if (option.value) {
-        option.disabled = true;
-      }
-    });
-    
-    // Select the first valid target version
-    for (const option of options) {
-      if (option.value && !option.disabled) {
-        targetVersionSelect.value = option.value;
-        break;
-      }
-    }
-    
-    // Fetch available updates for all mods
-    await fetchAvailableUpdates();
-  } else {
-    analysisStatusDiv.textContent = "
+  const totalFiles = document.createElement('span');
+  totalFiles.className = 'file-name';
+  totalFiles.textContent = `Total: ${selectedFiles.length} files`;
+  
+  const totalSizeSpan = document.createElement('span');
+  totalSizeSpan.className = 'file-size';
+  totalSizeSpan.textContent = formatFileSize(totalSize);
+  
+  summary
