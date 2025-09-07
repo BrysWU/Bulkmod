@@ -22,18 +22,14 @@
       <div class="subtext">Find, filter, and download mods for your modpack in bulk!</div>
     </header>
     
-    <!-- Mode Toggle -->
-    <div class="mode-selector">
-      <button class="mode-btn active" data-mode="browse">
-        <i class="fas fa-search"></i> Browse Mods
-      </button>
-      <button class="mode-btn" data-mode="update">
-        <i class="fas fa-sync-alt"></i> Update Mods
-      </button>
+    <!-- Tab Navigation -->
+    <div class="tab-navigation">
+      <button class="tab-button active" data-tab="browse">Browse Mods</button>
+      <button class="tab-button" data-tab="update">Update Mods</button>
     </div>
     
-    <!-- Browse Mode -->
-    <div id="browseMode" class="mode-content active">
+    <!-- Browse Mods Tab -->
+    <div id="browseTab" class="tab-content active">
       <div class="filter-container">
         <form id="filterForm" class="filter-form">
           <div class="form-row">
@@ -115,90 +111,67 @@
       </div>
     </div>
     
-    <!-- Update Mode -->
-    <div id="updateMode" class="mode-content">
+    <!-- Update Mods Tab -->
+    <div id="updateTab" class="tab-content">
       <div class="update-container">
-        <div class="update-steps">
-          <div class="step active">
-            <div class="step-number">1</div>
-            <h3>Select Mods</h3>
-            <p>Choose your mods folder or select individual mod files</p>
+        <div class="update-header">
+          <h2><i class="fas fa-arrow-up-right-dots"></i> Update Your Mods</h2>
+          <p>Select your mods to update them to a newer Minecraft version</p>
+        </div>
+        
+        <div class="upload-options">
+          <div class="upload-option">
+            <label for="modFolderInput" class="upload-label">
+              <i class="fas fa-folder-open"></i>
+              <span>Select Mods Folder</span>
+            </label>
+            <input type="file" id="modFolderInput" webkitdirectory directory multiple hidden />
           </div>
-          <div class="step">
-            <div class="step-number">2</div>
-            <h3>Analyze</h3>
-            <p>We'll detect versions and mod information</p>
-          </div>
-          <div class="step">
-            <div class="step-number">3</div>
-            <h3>Update</h3>
-            <p>Choose target version and download updates</p>
+          <div class="upload-option">
+            <label for="modFilesInput" class="upload-label">
+              <i class="fas fa-file-import"></i>
+              <span>Select Mod Files</span>
+            </label>
+            <input type="file" id="modFilesInput" multiple accept=".jar" hidden />
           </div>
         </div>
         
-        <div class="file-select-area">
-          <div class="file-select-options">
-            <div class="file-option">
-              <h4><i class="fas fa-folder-open"></i> Select Mods Folder</h4>
-              <p>Choose your entire mods folder to update all mods at once</p>
-              <div class="file-input-wrapper">
-                <input type="file" id="folderInput" webkitdirectory directory multiple />
-                <button id="folderSelectBtn" class="file-select-btn">
-                  <i class="fas fa-folder-open"></i> Select Folder
-                </button>
-              </div>
-            </div>
-            <div class="separator">OR</div>
-            <div class="file-option">
-              <h4><i class="fas fa-file-alt"></i> Select Mod Files</h4>
-              <p>Choose specific mod files to update</p>
-              <div class="file-input-wrapper">
-                <input type="file" id="fileInput" multiple accept=".jar" />
-                <button id="fileSelectBtn" class="file-select-btn">
-                  <i class="fas fa-file-alt"></i> Select Files
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        <div id="analysisResults" class="analysis-results">
-          <div class="analysis-header">
-            <h3>Analysis Results</h3>
-            <div class="analysis-stats">
-              <div class="stat-item">
-                <span class="stat-label">Current Version:</span>
-                <span id="currentVersion" class="stat-value">-</span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-label">Detected Mods:</span>
-                <span id="detectedModsCount" class="stat-value">0</span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-label">Available Updates:</span>
-                <span id="availableUpdatesCount" class="stat-value">0</span>
-              </div>
-            </div>
+        <div class="version-selection">
+          <div class="version-info">
+            <span class="detected-version">
+              <strong>Detected Version:</strong>
+              <span id="detectedVersion">-</span>
+            </span>
             
-            <div class="target-version-select">
-              <label for="targetVersion">Update to version:</label>
-              <select id="targetVersion" class="styled-select" disabled></select>
+            <span class="arrow"><i class="fas fa-arrow-right"></i></span>
+            
+            <div class="target-version">
+              <strong>Target Version:</strong>
+              <select id="targetVersion" class="styled-select" disabled>
+                <option value="">Select Version</option>
+              </select>
             </div>
-          </div>
-          
-          <div id="detectedMods" class="detected-mods"></div>
-          
-          <div class="update-actions">
-            <button id="analyzeBtn" class="primary-btn" disabled>
-              <i class="fas fa-search"></i> Analyze Mods
-            </button>
-            <button id="updateAllBtn" class="accent-btn" disabled>
-              <i class="fas fa-sync-alt"></i> Update All Mods
-            </button>
           </div>
         </div>
         
-        <div id="updateStatus" class="update-status"></div>
+        <div class="update-status">
+          <div id="analysisStatus" class="analysis-status">Select files to analyze</div>
+          <progress id="analysisProgress" value="0" max="100" class="analysis-progress"></progress>
+        </div>
+        
+        <div class="mod-update-list">
+          <h3>Detected Mods <span id="modCount">(0)</span></h3>
+          <div id="modUpdateList" class="update-list"></div>
+        </div>
+        
+        <div class="update-actions">
+          <button id="updateAllBtn" class="update-button" disabled>
+            <i class="fas fa-sync"></i> Update All Mods
+          </button>
+          <button id="downloadUpdatesBtn" class="download-button" disabled>
+            <i class="fas fa-download"></i> Download Updates
+          </button>
+        </div>
       </div>
     </div>
     

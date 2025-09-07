@@ -12,23 +12,20 @@ const categoryTagsDiv = document.getElementById('categoryTags');
 const selectedCountSpan = document.getElementById('selectedCount');
 const loadMoreBtn = document.getElementById('loadMoreBtn');
 const viewButtons = document.querySelectorAll('.view-btn');
+const tabButtons = document.querySelectorAll('.tab-button');
+const tabContents = document.querySelectorAll('.tab-content');
 
-// Update mode elements
-const modeButtons = document.querySelectorAll('.mode-btn');
-const modeContents = document.querySelectorAll('.mode-content');
-const folderInput = document.getElementById('folderInput');
-const fileInput = document.getElementById('fileInput');
-const folderSelectBtn = document.getElementById('folderSelectBtn');
-const fileSelectBtn = document.getElementById('fileSelectBtn');
-const analyzeBtn = document.getElementById('analyzeBtn');
-const updateAllBtn = document.getElementById('updateAllBtn');
-const currentVersionSpan = document.getElementById('currentVersion');
-const detectedModsCountSpan = document.getElementById('detectedModsCount');
-const availableUpdatesCountSpan = document.getElementById('availableUpdatesCount');
+// Update tab elements
+const modFolderInput = document.getElementById('modFolderInput');
+const modFilesInput = document.getElementById('modFilesInput');
+const detectedVersionSpan = document.getElementById('detectedVersion');
 const targetVersionSelect = document.getElementById('targetVersion');
-const detectedModsDiv = document.getElementById('detectedMods');
-const updateStatusDiv = document.getElementById('updateStatus');
-const steps = document.querySelectorAll('.step');
+const analysisStatusDiv = document.getElementById('analysisStatus');
+const analysisProgressBar = document.getElementById('analysisProgress');
+const modCountSpan = document.getElementById('modCount');
+const modUpdateListDiv = document.getElementById('modUpdateList');
+const updateAllBtn = document.getElementById('updateAllBtn');
+const downloadUpdatesBtn = document.getElementById('downloadUpdatesBtn');
 
 let allMods = [];
 let shownMods = [];
@@ -41,10 +38,11 @@ let totalPages = 1;
 let activeCategoryTags = new Set();
 let isLoading = false;
 
-// For update mode
-let detectedMods = [];
+// Variables for the update feature
+let uploadedMods = [];
 let detectedVersion = null;
-let availableUpdates = 0;
+let availableUpdates = {};
+let modsToUpdate = new Set();
 
 // Function to initialize view mode
 function initViewMode() {
@@ -59,20 +57,15 @@ function initViewMode() {
   });
 }
 
-// Function to initialize mode switching
-function initModeSwitching() {
-  modeButtons.forEach(btn => {
+// Tab switching functionality
+function initTabs() {
+  tabButtons.forEach(btn => {
     btn.addEventListener('click', () => {
-      modeButtons.forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
+      tabButtons.forEach(b => b.classList.remove('active'));
+      tabContents.forEach(c => c.classList.remove('active'));
       
-      const mode = btn.dataset.mode;
-      modeContents.forEach(content => {
-        content.classList.remove('active');
-        if (content.id === `${mode}Mode`) {
-          content.classList.add('active');
-        }
-      });
+      btn.classList.add('active');
+      document.getElementById(btn.dataset.tab + 'Tab').classList.add('active');
     });
   });
 }
@@ -87,8 +80,6 @@ async function fetchVersions() {
       .map(v => v.version);
     stable = Array.from(new Set(stable));
     stable.sort((a,b) => b.localeCompare(a, undefined, {numeric:true, sensitivity:'base'}));
-    
-    // Populate main version select
     mcVersionSelect.innerHTML = "";
     stable.forEach(v => {
       let opt = document.createElement("option");
@@ -98,20 +89,19 @@ async function fetchVersions() {
     });
     mcVersionSelect.value = stable.find(v => v === "1.20.1") || stable[0];
     
-    // Populate target version select (for updates)
-    targetVersionSelect.innerHTML = "";
+    // Also populate the target version dropdown for the update tab
+    targetVersionSelect.innerHTML = "<option value=''>Select Version</option>";
     stable.forEach(v => {
       let opt = document.createElement("option");
       opt.value = v;
       opt.textContent = v;
       targetVersionSelect.appendChild(opt);
     });
-    targetVersionSelect.value = stable.find(v => v === "1.20.1") || stable[0];
     
     statusDiv.textContent = "";
   } catch (e) {
     mcVersionSelect.innerHTML = "<option value='1.20.1'>1.20.1</option><option value='1.18.2'>1.18.2</option>";
-    targetVersionSelect.innerHTML = "<option value='1.20.1'>1.20.1</option><option value='1.18.2'>1.18.2</option>";
+    targetVersionSelect.innerHTML = "<option value=''>Select Version</option><option value='1.20.1'>1.20.1</option><option value='1.18.2'>1.18.2</option>";
     statusDiv.textContent = "Failed to load versions.";
   }
 }
@@ -407,7 +397,7 @@ async function reloadMods() {
   statusDiv.textContent = `Loaded ${allMods.length} mods.`;
 }
 
-// Event Listeners for Browse Mode
+// Event Listeners
 filterForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   await reloadMods();
@@ -471,497 +461,108 @@ downloadBtn.addEventListener('click', async () => {
   statusDiv.textContent = "All done! Check your downloads folder.";
 });
 
-// Update Mode Functions
+// ==================== MOD UPDATE FEATURE ====================
 
-// Initialize file inputs
-function initFileInputs() {
-  folderSelectBtn.addEventListener('click', () => {
-    folderInput.click();
-  });
+// Handle folder input change
+modFolderInput.addEventListener('change', async (e) => {
+  const files = e.target.files;
+  if (!files || files.length === 0) return;
   
-  fileSelectBtn.addEventListener('click', () => {
-    fileInput.click();
-  });
-  
-  folderInput.addEventListener('change', (e) => {
-    if (e.target.files.length > 0) {
-      const files = Array.from(e.target.files).filter(file => file.name.endsWith('.jar'));
-      if (files.length > 0) {
-        updateStatusDiv.innerHTML = `<div class="status-info">Selected ${files.length} mod files from folder</div>`;
-        analyzeBtn.disabled = false;
-        setActiveStep(1);
-      } else {
-        updateStatusDiv.innerHTML = `<div class="status-warning">No mod files (.jar) found in the selected folder</div>`;
-        analyzeBtn.disabled = true;
-      }
-    }
-  });
-  
-  fileInput.addEventListener('change', (e) => {
-    if (e.target.files.length > 0) {
-      updateStatusDiv.innerHTML = `<div class="status-info">Selected ${e.target.files.length} mod files</div>`;
-      analyzeBtn.disabled = false;
-      setActiveStep(1);
-    } else {
-      updateStatusDiv.innerHTML = '';
-      analyzeBtn.disabled = true;
-    }
-  });
-  
-  analyzeBtn.addEventListener('click', analyzeMods);
-  updateAllBtn.addEventListener('click', updateAllMods);
-  targetVersionSelect.addEventListener('change', checkUpdatesAvailability);
-}
+  await processModFiles(files);
+});
 
-// Set active step in the wizard
-function setActiveStep(stepIndex) {
-  steps.forEach((step, idx) => {
-    step.classList.toggle('active', idx === stepIndex);
-    step.classList.toggle('complete', idx < stepIndex);
-  });
-}
+// Handle individual files input change
+modFilesInput.addEventListener('change', async (e) => {
+  const files = e.target.files;
+  if (!files || files.length === 0) return;
+  
+  await processModFiles(files);
+});
 
-// Extract JAR file metadata
-async function extractJarMetadata(file) {
-  try {
-    // Create a new JSZip instance
-    const JSZip = await import('https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm');
-    const zip = new JSZip.default();
-    
-    // Read the JAR file as an ArrayBuffer
-    const content = await file.arrayBuffer();
-    const loadedZip = await zip.loadAsync(content);
-    
-    // Look for fabric.mod.json, mods.toml, or mcmod.info
-    let modInfo = null;
-    let modLoader = null;
-    let modId = null;
-    let modName = null;
-    let modVersion = null;
-    let minecraftVersion = null;
-    
-    // Try to find Fabric mod info
-    if (loadedZip.files['fabric.mod.json']) {
-      const fabricModJson = await loadedZip.files['fabric.mod.json'].async('string');
-      const fabricInfo = JSON.parse(fabricModJson);
-      modLoader = 'fabric';
-      modId = fabricInfo.id;
-      modName = fabricInfo.name || fabricInfo.id;
-      modVersion = fabricInfo.version;
-      
-      if (fabricInfo.depends && fabricInfo.depends.minecraft) {
-        minecraftVersion = fabricInfo.depends.minecraft.replace(/[\^\~]/g, '');
-      }
-    }
-    // Try to find Forge mod info
-    else if (loadedZip.files['META-INF/mods.toml']) {
-      const modsToml = await loadedZip.files['META-INF/mods.toml'].async('string');
-      modLoader = 'forge';
-      
-      // Simple TOML parsing (basic approach)
-      const modIdMatch = modsToml.match(/modId\s*=\s*["']([^"']+)["']/);
-      const modNameMatch = modsToml.match(/displayName\s*=\s*["']([^"']+)["']/);
-      const modVersionMatch = modsToml.match(/version\s*=\s*["']([^"']+)["']/);
-      const minecraftVersionMatch = modsToml.match(/minecraft\s*=\s*["']([^"']+)["']/);
-      
-      if (modIdMatch) modId = modIdMatch[1];
-      if (modNameMatch) modName = modNameMatch[1];
-      if (modVersionMatch) modVersion = modVersionMatch[1];
-      if (minecraftVersionMatch) {
-        minecraftVersion = minecraftVersionMatch[1].replace(/[\^\~]/g, '');
-      }
-    }
-    // Try to find older Forge mod info
-    else if (loadedZip.files['mcmod.info']) {
-      const mcmodInfo = await loadedZip.files['mcmod.info'].async('string');
-      try {
-        const mcmodJson = JSON.parse(mcmodInfo);
-        modLoader = 'forge';
-        
-        if (Array.isArray(mcmodJson) && mcmodJson.length > 0) {
-          modId = mcmodJson[0].modid;
-          modName = mcmodJson[0].name || mcmodJson[0].modid;
-          modVersion = mcmodJson[0].version;
-          if (mcmodJson[0].mcversion) {
-            minecraftVersion = mcmodJson[0].mcversion;
-          }
-        }
-      } catch (e) {
-        console.error('Error parsing mcmod.info:', e);
-      }
-    }
-    
-    // If we couldn't find version info in the metadata, try to infer from filename
-    if (!minecraftVersion) {
-      const filenameMatch = file.name.match(/(?:mc|minecraft)[-_]?([0-9]+\.[0-9]+(?:\.[0-9]+)?)/i);
-      if (filenameMatch) {
-        minecraftVersion = filenameMatch[1];
-      }
-    }
-    
-    return {
-      filename: file.name,
-      modId,
-      modName: modName || file.name.replace('.jar', ''),
-      modVersion,
-      minecraftVersion,
-      modLoader,
-      fileSize: file.size,
-      lastModified: new Date(file.lastModified).toISOString()
-    };
-  } catch (e) {
-    console.error('Error extracting JAR metadata:', e);
-    return {
-      filename: file.name,
-      modId: null,
-      modName: file.name.replace('.jar', ''),
-      modVersion: null,
-      minecraftVersion: null,
-      modLoader: null,
-      fileSize: file.size,
-      lastModified: new Date(file.lastModified).toISOString(),
-      error: e.message
-    };
-  }
-}
-
-// Analyze mods from selected files
-async function analyzeMods() {
-  updateStatusDiv.innerHTML = `<div class="status-info">Analyzing mod files... Please wait.</div>`;
-  analyzeBtn.disabled = true;
-  setActiveStep(1);
+// Process the selected mod files
+async function processModFiles(files) {
+  // Reset state
+  uploadedMods = [];
+  detectedVersion = null;
+  availableUpdates = {};
+  modsToUpdate.clear();
   
-  let files = [];
-  if (folderInput.files.length > 0) {
-    files = Array.from(folderInput.files).filter(file => file.name.endsWith('.jar'));
-  } else if (fileInput.files.length > 0) {
-    files = Array.from(fileInput.files);
-  }
-  
-  if (files.length === 0) {
-    updateStatusDiv.innerHTML = `<div class="status-error">No mod files selected</div>`;
-    analyzeBtn.disabled = false;
-    return;
-  }
-  
-  try {
-    // Extract metadata from each JAR file
-    detectedMods = [];
-    let versionCounts = {};
-    let loaderCounts = {};
-    
-    for (let i = 0; i < files.length; i++) {
-      updateStatusDiv.innerHTML = `
-        <div class="status-info">
-          <div class="progress-bar">
-            <div class="progress" style="width: ${Math.round((i + 1) / files.length * 100)}%"></div>
-          </div>
-          Analyzing ${i + 1}/${files.length}: ${files[i].name}
-        </div>
-      `;
-      
-      const metadata = await extractJarMetadata(files[i]);
-      detectedMods.push(metadata);
-      
-      if (metadata.minecraftVersion) {
-        versionCounts[metadata.minecraftVersion] = (versionCounts[metadata.minecraftVersion] || 0) + 1;
-      }
-      
-      if (metadata.modLoader) {
-        loaderCounts[metadata.modLoader] = (loaderCounts[metadata.modLoader] || 0) + 1;
-      }
-    }
-    
-    // Determine the most common Minecraft version
-    let mostCommonVersion = null;
-    let highestCount = 0;
-    for (const [version, count] of Object.entries(versionCounts)) {
-      if (count > highestCount) {
-        mostCommonVersion = version;
-        highestCount = count;
-      }
-    }
-    
-    // Determine the most common mod loader
-    let mostCommonLoader = null;
-    highestCount = 0;
-    for (const [loader, count] of Object.entries(loaderCounts)) {
-      if (count > highestCount) {
-        mostCommonLoader = loader;
-        highestCount = count;
-      }
-    }
-    
-    // Update UI with analysis results
-    detectedVersion = mostCommonVersion;
-    currentVersionSpan.textContent = detectedVersion || 'Unknown';
-    detectedModsCountSpan.textContent = detectedMods.length;
-    
-    // Enable target version select
-    targetVersionSelect.disabled = false;
-    setActiveStep(2);
-    
-    // Render detected mods
-    renderDetectedMods();
-    
-    // Check for available updates
-    await checkUpdatesAvailability();
-  } catch (e) {
-    updateStatusDiv.innerHTML = `<div class="status-error">Error analyzing mods: ${e.message}</div>`;
-    analyzeBtn.disabled = false;
-  }
-}
-
-// Render detected mods list
-function renderDetectedMods() {
-  detectedModsDiv.innerHTML = '';
-  
-  if (detectedMods.length === 0) {
-    detectedModsDiv.innerHTML = '<p class="empty-state">No mods detected</p>';
-    return;
-  }
-  
-  const table = document.createElement('table');
-  table.className = 'mods-table';
-  
-  // Table header
-  const thead = document.createElement('thead');
-  thead.innerHTML = `
-    <tr>
-      <th>Mod Name</th>
-      <th>ID</th>
-      <th>Minecraft Version</th>
-      <th>Mod Version</th>
-      <th>Loader</th>
-      <th>Status</th>
-    </tr>
-  `;
-  table.appendChild(thead);
-  
-  // Table body
-  const tbody = document.createElement('tbody');
-  detectedMods.forEach((mod, index) => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${mod.modName || 'Unknown'}</td>
-      <td>${mod.modId || 'Unknown'}</td>
-      <td>${mod.minecraftVersion || 'Unknown'}</td>
-      <td>${mod.modVersion || 'Unknown'}</td>
-      <td>${mod.modLoader || 'Unknown'}</td>
-      <td class="mod-status" data-index="${index}">
-        <span class="status-pending">Pending</span>
-      </td>
-    `;
-    tbody.appendChild(tr);
-  });
-  
-  table.appendChild(tbody);
-  detectedModsDiv.appendChild(table);
-}
-
-// Check availability of updates for the target version
-async function checkUpdatesAvailability() {
-  if (!detectedMods.length || !detectedVersion) {
-    return;
-  }
-  
-  const targetVersion = targetVersionSelect.value;
-  updateStatusDiv.innerHTML = `<div class="status-info">Checking for updates to ${targetVersion}...</div>`;
-  
-  try {
-    availableUpdates = 0;
-    
-    for (let i = 0; i < detectedMods.length; i++) {
-      const mod = detectedMods[i];
-      const statusCell = document.querySelector(`.mod-status[data-index="${i}"]`);
-      
-      if (!mod.modId) {
-        statusCell.innerHTML = `<span class="status-warning">Cannot check (no mod ID)</span>`;
-        continue;
-      }
-      
-      // Search for mod by ID on Modrinth
-      const searchUrl = `${MODRINTH_API}/search?query=${encodeURIComponent(mod.modId)}`;
-      const searchResp = await fetch(searchUrl);
-      const searchResults = await searchResp.json();
-      
-      // Find exact match
-      const exactMatch = searchResults.hits.find(hit => 
-        hit.slug === mod.modId || 
-        hit.project_id === mod.modId
-      );
-      
-      if (!exactMatch) {
-        statusCell.innerHTML = `<span class="status-warning">Not found on Modrinth</span>`;
-        continue;
-      }
-      
-      // Check if target version is available
-      const versionUrl = `${MODRINTH_API}/project/${exactMatch.project_id}/version?game_versions=["${targetVersion}"]`;
-      const versionResp = await fetch(versionUrl);
-      const versions = await versionResp.json();
-      
-      if (versions.length > 0) {
-        statusCell.innerHTML = `
-          <span class="status-success">Update available</span>
-          <button class="update-btn" data-project-id="${exactMatch.project_id}" data-index="${i}">
-            <i class="fas fa-download"></i>
-          </button>
-        `;
-        availableUpdates++;
-        
-        // Add event listener for update button
-        setTimeout(() => {
-          const updateBtn = statusCell.querySelector('.update-btn');
-          if (updateBtn) {
-            updateBtn.addEventListener('click', (e) => {
-              downloadModUpdate(exactMatch.project_id, targetVersion, mod.modLoader);
-            });
-          }
-        }, 0);
-      } else {
-        statusCell.innerHTML = `<span class="status-error">No version for ${targetVersion}</span>`;
-      }
-    }
-    
-    // Update UI
-    availableUpdatesCountSpan.textContent = availableUpdates;
-    updateAllBtn.disabled = availableUpdates === 0;
-    
-    if (availableUpdates > 0) {
-      updateStatusDiv.innerHTML = `<div class="status-success">${availableUpdates} updates available for ${targetVersion}!</div>`;
-    } else {
-      updateStatusDiv.innerHTML = `<div class="status-warning">No updates available for ${targetVersion}</div>`;
-    }
-  } catch (e) {
-    updateStatusDiv.innerHTML = `<div class="status-error">Error checking for updates: ${e.message}</div>`;
-  }
-}
-
-// Download a single mod update
-async function downloadModUpdate(projectId, targetVersion, loader) {
-  try {
-    updateStatusDiv.innerHTML = `<div class="status-info">Downloading mod update...</div>`;
-    
-    // Get compatible versions
-    const versionUrl = `${MODRINTH_API}/project/${projectId}/version?game_versions=["${targetVersion}"]`;
-    const versionResp = await fetch(versionUrl);
-    const versions = await versionResp.json();
-    
-    if (!versions.length) {
-      updateStatusDiv.innerHTML = `<div class="status-error">No compatible version found</div>`;
-      return;
-    }
-    
-    // Filter by loader if specified
-    let compatibleVersions = versions;
-    if (loader) {
-      compatibleVersions = versions.filter(v => v.loaders.includes(loader));
-      if (!compatibleVersions.length) {
-        // Fall back to all versions if no loader match
-        compatibleVersions = versions;
-      }
-    }
-    
-    // Get the latest version
-    const latestVersion = compatibleVersions[0];
-    const file = latestVersion.files.find(f => f.filename.endsWith('.jar'));
-    
-    if (!file) {
-      updateStatusDiv.innerHTML = `<div class="status-error">No JAR file found for download</div>`;
-      return;
-    }
-    
-    // Download file
-    const a = document.createElement('a');
-    a.href = file.url;
-    a.download = file.filename;
-    a.style.display = 'none';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    
-    updateStatusDiv.innerHTML = `<div class="status-success">Downloaded ${file.filename}</div>`;
-  } catch (e) {
-    updateStatusDiv.innerHTML = `<div class="status-error">Error downloading mod: ${e.message}</div>`;
-  }
-}
-
-// Update all available mods
-async function updateAllMods() {
-  if (availableUpdates === 0) {
-    return;
-  }
-  
-  const targetVersion = targetVersionSelect.value;
-  updateStatusDiv.innerHTML = `<div class="status-info">Updating all mods to ${targetVersion}...</div>`;
+  analysisStatusDiv.textContent = `Analyzing ${files.length} files...`;
+  analysisProgressBar.value = 0;
+  modUpdateListDiv.innerHTML = '';
+  detectedVersionSpan.textContent = '-';
+  targetVersionSelect.disabled = true;
   updateAllBtn.disabled = true;
+  downloadUpdatesBtn.disabled = true;
   
-  try {
-    let downloadCount = 0;
-    const updateButtons = document.querySelectorAll('.update-btn');
+  // Filter only .jar files
+  const jarFiles = Array.from(files).filter(file => file.name.toLowerCase().endsWith('.jar'));
+  
+  if (jarFiles.length === 0) {
+    analysisStatusDiv.textContent = "No mod files (.jar) found. Please select valid mod files.";
+    return;
+  }
+  
+  let versionCounts = {};
+  let processedCount = 0;
+  
+  for (const file of jarFiles) {
+    try {
+      const modInfo = await extractModInfo(file);
+      if (modInfo) {
+        uploadedMods.push(modInfo);
+        
+        // Count versions to determine the most common one
+        if (modInfo.mcVersion) {
+          versionCounts[modInfo.mcVersion] = (versionCounts[modInfo.mcVersion] || 0) + 1;
+        }
+      }
+      
+      // Update progress
+      processedCount++;
+      const progress = (processedCount / jarFiles.length) * 100;
+      analysisProgressBar.value = progress;
+    } catch (e) {
+      console.error(`Error processing ${file.name}:`, e);
+    }
+  }
+  
+  // Determine the most common version
+  let mostCommonVersion = null;
+  let maxCount = 0;
+  
+  Object.entries(versionCounts).forEach(([version, count]) => {
+    if (count > maxCount) {
+      maxCount = count;
+      mostCommonVersion = version;
+    }
+  });
+  
+  detectedVersion = mostCommonVersion;
+  
+  if (detectedVersion) {
+    detectedVersionSpan.textContent = detectedVersion;
+    targetVersionSelect.disabled = false;
     
-    for (let i = 0; i < updateButtons.length; i++) {
-      const btn = updateButtons[i];
-      const projectId = btn.dataset.projectId;
-      const index = parseInt(btn.dataset.index);
-      const mod = detectedMods[index];
-      
-      updateStatusDiv.innerHTML = `
-        <div class="status-info">
-          <div class="progress-bar">
-            <div class="progress" style="width: ${Math.round((i + 1) / updateButtons.length * 100)}%"></div>
-          </div>
-          Updating ${i + 1}/${updateButtons.length}: ${mod.modName}
-        </div>
-      `;
-      
-      await downloadModUpdate(projectId, targetVersion, mod.modLoader);
-      downloadCount++;
-      
-      // Small delay between downloads to prevent browser throttling
-      await new Promise(resolve => setTimeout(resolve, 300));
+    // Enable versions newer than detected version
+    const options = Array.from(targetVersionSelect.options);
+    options.forEach(option => {
+      if (option.value && compareVersions(option.value, detectedVersion) > 0) {
+        option.disabled = false;
+      } else if (option.value) {
+        option.disabled = true;
+      }
+    });
+    
+    // Select the first valid target version
+    for (const option of options) {
+      if (option.value && !option.disabled) {
+        targetVersionSelect.value = option.value;
+        break;
+      }
     }
     
-    updateStatusDiv.innerHTML = `<div class="status-success">Successfully downloaded ${downloadCount} mod updates!</div>`;
-  } catch (e) {
-    updateStatusDiv.innerHTML = `<div class="status-error">Error updating mods: ${e.message}</div>`;
-  } finally {
-    updateAllBtn.disabled = false;
-  }
-}
-
-// Initialize the application
-window.addEventListener("DOMContentLoaded", async () => {
-  initViewMode();
-  initModeSwitching();
-  initFileInputs();
-  await fetchVersions();
-  await fetchCategories();
-  await reloadMods();
-});
-
-// Add event listeners for category select and sort order changes
-categorySelect.addEventListener('change', () => {
-  // Update active category tags based on dropdown selection
-  activeCategoryTags.clear();
-  if (categorySelect.value) {
-    activeCategoryTags.add(categorySelect.value);
-  }
-  renderCategoryTags();
-  reloadMods();
-});
-
-sortOrderSelect.addEventListener('change', reloadMods);
-mcVersionSelect.addEventListener('change', reloadMods);
-modLoaderSelect.addEventListener('change', reloadMods);
-
-// Memory optimization: Use IntersectionObserver to detect when list is scrolled
-const observer = new IntersectionObserver((entries) => {
-  if (entries[0].isIntersecting && !isLoading && currentPage < totalPages) {
-    loadMoreMods();
-  }
-}, { rootMargin: '200px' });
-
-// Observe the load more button for infinite scroll-like behavior
-observer.observe(loadMoreBtn);
+    // Fetch available updates for all mods
+    await fetchAvailableUpdates();
+  } else {
+    analysisStatusDiv.textContent = "
