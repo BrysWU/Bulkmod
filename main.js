@@ -12,23 +12,27 @@ const categoryTagsDiv = document.getElementById('categoryTags');
 const selectedCountSpan = document.getElementById('selectedCount');
 const loadMoreBtn = document.getElementById('loadMoreBtn');
 const viewButtons = document.querySelectorAll('.view-btn');
-const tabButtons = document.querySelectorAll('.tab-btn');
+
+// Tab navigation elements
+const tabButtons = document.querySelectorAll('.tab-button');
 const tabContents = document.querySelectorAll('.tab-content');
 
-// Update tab elements
+// Updater tab elements
+const targetMcVersionSelect = document.getElementById('targetMcVersion');
+const targetModLoaderSelect = document.getElementById('targetModLoader');
 const folderInput = document.getElementById('folderInput');
 const fileInput = document.getElementById('fileInput');
-const fileListDiv = document.getElementById('fileList');
-const targetVersionSelect = document.getElementById('targetVersion');
-const targetLoaderSelect = document.getElementById('targetLoader');
-const analyzeBtn = document.getElementById('analyzeBtn');
-const updateBtn = document.getElementById('updateBtn');
-const updateResultsDiv = document.getElementById('updateResults');
-const detectVersionDiv = document.getElementById('detectVersion');
-const detectLoaderDiv = document.getElementById('detectLoader');
-const modsCountDiv = document.getElementById('modsCount');
-const updateListDiv = document.getElementById('updateList');
-const updateStatusDiv = document.getElementById('updateStatus');
+const analyzingStatus = document.getElementById('analyzingStatus');
+const modAnalysisResults = document.getElementById('modAnalysisResults');
+const detectedVersion = document.getElementById('detectedVersion');
+const detectedLoader = document.getElementById('detectedLoader');
+const modsAnalyzedCount = document.getElementById('modsAnalyzedCount');
+const modsFoundCount = document.getElementById('modsFoundCount');
+const updatesAvailableCount = document.getElementById('updatesAvailableCount');
+const updatesList = document.getElementById('updatesList');
+const updateAllBtn = document.getElementById('updateAllBtn');
+const selectUpdatesBtn = document.getElementById('selectUpdatesBtn');
+const updaterStatus = document.getElementById('updaterStatus');
 
 let allMods = [];
 let shownMods = [];
@@ -41,21 +45,20 @@ let totalPages = 1;
 let activeCategoryTags = new Set();
 let isLoading = false;
 
-// For update tab
-let selectedFiles = [];
-let detectedVersion = null;
-let detectedLoader = null;
-let modInfoMap = new Map();
+// For updater feature
+let analyzedMods = [];
+let detectedMcVersion = "";
+let detectedModLoader = "";
 
-// Function to initialize tab switching
+// Initialize tabs
 function initTabs() {
-  tabButtons.forEach(btn => {
-    btn.addEventListener('click', () => {
-      tabButtons.forEach(b => b.classList.remove('active'));
-      tabContents.forEach(c => c.classList.remove('active'));
+  tabButtons.forEach(button => {
+    button.addEventListener('click', () => {
+      tabButtons.forEach(btn => btn.classList.remove('active'));
+      tabContents.forEach(content => content.classList.remove('active'));
       
-      btn.classList.add('active');
-      document.getElementById(btn.dataset.tab).classList.add('active');
+      button.classList.add('active');
+      document.getElementById(`${button.dataset.tab}-tab`).classList.add('active');
     });
   });
 }
@@ -84,34 +87,29 @@ async function fetchVersions() {
     stable = Array.from(new Set(stable));
     stable.sort((a,b) => b.localeCompare(a, undefined, {numeric:true, sensitivity:'base'}));
     
+    // Populate both version dropdowns
     populateVersionDropdown(mcVersionSelect, stable);
-    populateVersionDropdown(targetVersionSelect, stable);
+    populateVersionDropdown(targetMcVersionSelect, stable);
     
     statusDiv.textContent = "";
   } catch (e) {
-    mcVersionSelect.innerHTML = "<option value='1.20.1'>1.20.1</option><option value='1.18.2'>1.18.2</option>";
-    targetVersionSelect.innerHTML = "<option value=''>Select a version</option><option value='1.20.1'>1.20.1</option><option value='1.18.2'>1.18.2</option>";
+    const defaultVersions = ["1.20.1", "1.19.4", "1.18.2", "1.16.5", "1.12.2"];
+    populateVersionDropdown(mcVersionSelect, defaultVersions);
+    populateVersionDropdown(targetMcVersionSelect, defaultVersions);
     statusDiv.textContent = "Failed to load versions.";
   }
 }
 
 // Helper function to populate version dropdowns
-function populateVersionDropdown(select, versions) {
-  select.innerHTML = "";
-  if (select === targetVersionSelect) {
-    select.innerHTML = "<option value=''>Select a version</option>";
-  }
-  
+function populateVersionDropdown(selectElement, versions) {
+  selectElement.innerHTML = "";
   versions.forEach(v => {
     let opt = document.createElement("option");
     opt.value = v;
     opt.textContent = v;
-    select.appendChild(opt);
+    selectElement.appendChild(opt);
   });
-  
-  if (select === mcVersionSelect) {
-    select.value = versions.find(v => v === "1.20.1") || versions[0];
-  }
+  selectElement.value = versions.find(v => v === "1.20.1") || versions[0];
 }
 
 // Fetch categories
@@ -441,97 +439,4 @@ downloadBtn.addEventListener('click', async () => {
       let file = versions[0].files.find(f => f.filename.endsWith(".jar"));
       if (!file) {
         statusDiv.textContent += `\nNo jar file for ${mod.title}.`;
-        continue;
-      }
-      
-      // Download file
-      let a = document.createElement("a");
-      a.href = file.url;
-      a.download = file.filename;
-      a.style.display = "none";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      
-      // Animate download button
-      downloadBtn.classList.add("downloading");
-      setTimeout(() => {
-        downloadBtn.classList.remove("downloading");
-      }, 300);
-      
-      // Add a small delay between downloads to prevent browser throttling
-      await new Promise(resolve => setTimeout(resolve, 300));
-    } catch (e) {
-      statusDiv.textContent += `\nError downloading ${mod.title}: ${e}`;
-    }
-  }
-  
-  statusDiv.textContent = "All done! Check your downloads folder.";
-});
-
-// ----- Modpack Update Feature -----
-
-// Handle file selection
-folderInput.addEventListener('change', handleFileSelection);
-fileInput.addEventListener('change', handleFileSelection);
-
-function handleFileSelection(e) {
-  selectedFiles = Array.from(e.target.files).filter(file => 
-    file.name.endsWith('.jar')
-  );
-  
-  updateFileList();
-  
-  if (selectedFiles.length > 0) {
-    analyzeBtn.disabled = false;
-    targetVersionSelect.disabled = false;
-    targetLoaderSelect.disabled = false;
-  } else {
-    analyzeBtn.disabled = true;
-    targetVersionSelect.disabled = true;
-    targetLoaderSelect.disabled = true;
-  }
-}
-
-// Update the file list display
-function updateFileList() {
-  if (!selectedFiles.length) {
-    fileListDiv.innerHTML = '<p class="no-files">No files selected</p>';
-    return;
-  }
-  
-  fileListDiv.innerHTML = '';
-  let totalSize = 0;
-  
-  selectedFiles.forEach(file => {
-    totalSize += file.size;
-    
-    const fileItem = document.createElement('div');
-    fileItem.className = 'file-item';
-    
-    const fileName = document.createElement('span');
-    fileName.className = 'file-name';
-    fileName.textContent = file.name;
-    
-    const fileSize = document.createElement('span');
-    fileSize.className = 'file-size';
-    fileSize.textContent = formatFileSize(file.size);
-    
-    fileItem.appendChild(fileName);
-    fileItem.appendChild(fileSize);
-    fileListDiv.appendChild(fileItem);
-  });
-  
-  // Add summary
-  const summary = document.createElement('div');
-  summary.className = 'file-item';
-  
-  const totalFiles = document.createElement('span');
-  totalFiles.className = 'file-name';
-  totalFiles.textContent = `Total: ${selectedFiles.length} files`;
-  
-  const totalSizeSpan = document.createElement('span');
-  totalSizeSpan.className = 'file-size';
-  totalSizeSpan.textContent = formatFileSize(totalSize);
-  
-  summary
+        continue

@@ -10,6 +10,9 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body>
+  <div class="app-bg">
+    <div class="bg-pattern"></div>
+  </div>
   <div class="container">
     <header>
       <div class="logo">
@@ -19,12 +22,14 @@
       <div class="subtext">Find, filter, and download mods for your modpack in bulk!</div>
     </header>
     
-    <div class="tab-container">
-      <button class="tab-btn active" data-tab="search-mods">Search Mods</button>
-      <button class="tab-btn" data-tab="update-modpack">Update Modpack</button>
+    <!-- Tab Navigation -->
+    <div class="tab-navigation">
+      <button class="tab-button active" data-tab="finder">Mod Finder</button>
+      <button class="tab-button" data-tab="updater">Mod Updater</button>
     </div>
     
-    <div id="search-mods" class="tab-content active">
+    <!-- Mod Finder Tab Content -->
+    <div class="tab-content active" id="finder-tab">
       <div class="filter-container">
         <form id="filterForm" class="filter-form">
           <div class="form-row">
@@ -106,101 +111,100 @@
       </div>
     </div>
     
-    <div id="update-modpack" class="tab-content">
-      <div class="update-container">
-        <h2>Update Your Modpack</h2>
-        <p class="update-desc">Update your existing mods to a newer Minecraft version with just a few clicks!</p>
+    <!-- Mod Updater Tab Content -->
+    <div class="tab-content" id="updater-tab">
+      <div class="updater-container">
+        <div class="updater-intro">
+          <h2>Update Your Mods to a Newer Version</h2>
+          <p>Select your mods folder or individual mod files, and we'll help you update them to a newer Minecraft version.</p>
+        </div>
         
-        <div class="update-steps">
-          <div class="step">
-            <div class="step-number">1</div>
-            <div class="step-content">
-              <h3>Select Your Mods</h3>
-              <p>Choose your mods folder or select individual mod files</p>
-              <div class="file-input-wrapper">
-                <button class="folder-select-btn">
-                  <i class="fas fa-folder-open"></i> Select Mods Folder
-                </button>
-                <input type="file" id="folderInput" webkitdirectory directory multiple />
-                
-                <span class="or-divider">OR</span>
-                
-                <label for="fileInput" class="file-select-btn">
-                  <i class="fas fa-file"></i> Select Mod Files
-                </label>
-                <input type="file" id="fileInput" multiple accept=".jar" />
-              </div>
-              <div id="fileList" class="file-list">
-                <p class="no-files">No files selected</p>
-              </div>
+        <div class="updater-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="targetMcVersion">Target Version</label>
+              <select id="targetMcVersion" class="styled-select"></select>
+            </div>
+            <div class="form-group">
+              <label for="targetModLoader">Target Loader</label>
+              <select id="targetModLoader" class="styled-select">
+                <option value="fabric">Fabric</option>
+                <option value="forge">Forge</option>
+                <option value="neoforge">NeoForge</option>
+                <option value="quilt">Quilt</option>
+              </select>
             </div>
           </div>
           
-          <div class="step">
-            <div class="step-number">2</div>
-            <div class="step-content">
-              <h3>Choose Target Version</h3>
-              <p>Select which Minecraft version to update to</p>
-              <div class="form-row">
-                <div class="form-group">
-                  <label for="targetVersion">Target Version</label>
-                  <select id="targetVersion" class="styled-select" disabled>
-                    <option value="">Select a version</option>
-                  </select>
-                </div>
-                <div class="form-group">
-                  <label for="targetLoader">Mod Loader</label>
-                  <select id="targetLoader" class="styled-select" disabled>
-                    <option value="fabric">Fabric</option>
-                    <option value="forge">Forge</option>
-                    <option value="neoforge">NeoForge</option>
-                    <option value="quilt">Quilt</option>
-                  </select>
-                </div>
-              </div>
+          <div class="file-selection">
+            <div class="file-input-container">
+              <label for="folderInput" class="file-input-label">
+                <i class="fas fa-folder-open"></i>
+                <span>Select Mods Folder</span>
+                <input type="file" id="folderInput" webkitdirectory directory multiple>
+              </label>
+              
+              <div class="or-divider">OR</div>
+              
+              <label for="fileInput" class="file-input-label">
+                <i class="fas fa-file-archive"></i>
+                <span>Select Mod Files</span>
+                <input type="file" id="fileInput" multiple accept=".jar">
+              </label>
             </div>
           </div>
           
-          <div class="step">
-            <div class="step-number">3</div>
-            <div class="step-content">
-              <h3>Update and Download</h3>
-              <p>Click update to find and download the latest compatible versions</p>
-              <button id="analyzeBtn" class="analyze-btn" disabled>
-                <i class="fas fa-search"></i> Analyze Mods
-              </button>
-            </div>
+          <div id="analyzingStatus" class="analyzing-status hidden">
+            <div class="spinner"></div>
+            <span>Analyzing mods...</span>
           </div>
         </div>
         
-        <div id="updateResults" class="update-results">
-          <h3>Analysis Results</h3>
-          <div class="results-info">
-            <div id="detectVersion" class="detected-version">
-              <span class="label">Detected Version:</span> <span class="value">-</span>
+        <div id="modAnalysisResults" class="mod-analysis-results hidden">
+          <h3>Mod Analysis Results</h3>
+          <div class="analysis-summary">
+            <div class="summary-item">
+              <span class="summary-label">Detected Version:</span>
+              <span id="detectedVersion" class="summary-value">-</span>
             </div>
-            <div id="detectLoader" class="detected-loader">
-              <span class="label">Detected Loader:</span> <span class="value">-</span>
+            <div class="summary-item">
+              <span class="summary-label">Detected Loader:</span>
+              <span id="detectedLoader" class="summary-value">-</span>
             </div>
-            <div id="modsCount" class="mods-count">
-              <span class="label">Mod Files:</span> <span class="value">0</span>
+            <div class="summary-item">
+              <span class="summary-label">Mods Analyzed:</span>
+              <span id="modsAnalyzedCount" class="summary-value">0</span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label">Mods Found on Modrinth:</span>
+              <span id="modsFoundCount" class="summary-value">0</span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label">Updates Available:</span>
+              <span id="updatesAvailableCount" class="summary-value">0</span>
             </div>
           </div>
           
-          <div id="updateList" class="update-list"></div>
+          <div id="updatesList" class="updates-list"></div>
           
-          <button id="updateBtn" class="update-btn" disabled>
-            <i class="fas fa-sync-alt"></i> Update All Mods
-          </button>
-          <div id="updateStatus" class="update-status"></div>
+          <div class="updater-actions">
+            <button id="updateAllBtn" class="update-btn" disabled>
+              <i class="fas fa-sync-alt"></i> Update All Mods
+            </button>
+            <button id="selectUpdatesBtn" class="update-btn" disabled>
+              <i class="fas fa-check-square"></i> Select Updates to Download
+            </button>
+          </div>
         </div>
       </div>
+      
+      <div id="updaterStatus" class="updater-status"></div>
     </div>
     
     <footer>
       <p>
         <span>Made for Minecraft modpack makers. Powered by <a href="https://modrinth.com/" target="_blank">Modrinth API</a>.</span>
-        <span>Open source on <a href="https://github.com/BrysWU/modrinth-bulk-downloader" target="_blank">GitHub</a></span>
+        <span>Open source on <a href="https://github.com/BrysWU/bulkmods" target="_blank">GitHub</a></span>
       </p>
     </footer>
   </div>
